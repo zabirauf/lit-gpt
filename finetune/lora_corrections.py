@@ -7,10 +7,11 @@ from random import random
 
 import lightning as L
 import torch
-from lightning.fabric.loggers import CSVLogger
+from lightning.fabric.loggers import CSVLogger, TensorBoardLogger
 from lightning.fabric.plugins import BitsandbytesPrecision
 from lightning.fabric.strategies import FSDPStrategy
 from lightning.fabric.utilities import ThroughputMonitor
+from lightning.pytorch.loggers import WandbLogger
 
 # support running without installing as a package
 wd = Path(__file__).parent.parent.resolve()
@@ -28,6 +29,7 @@ from lit_gpt.utils import (
 )
 from scripts.prepare_corrections_ds import generate_prompt
 
+logger_name = "wandb"
 eval_interval = 100
 save_interval = 100
 eval_iters = 100
@@ -94,8 +96,9 @@ def setup(
     if not out_dir.exists():
         os.makedirs(out_dir, exist_ok=True)
 
-    logger = CSVLogger(out_dir.parent, out_dir.name, flush_logs_every_n_steps=log_interval)
-    fabric = L.Fabric(devices=devices, strategy=strategy, precision=precision, loggers=logger, plugins=plugins)
+    logger_wandb = WandbLogger(project="correction-slm", name="run-2", resume=False)
+    logger_csv = CSVLogger(out_dir.parent, out_dir.name, flush_logs_every_n_steps=log_interval)
+    fabric = L.Fabric(devices=devices, strategy=strategy, precision=precision, loggers=[logger_csv, logger_wandb], plugins=plugins)
     fabric.print(hparams)
     fabric.launch(main, data_dir, checkpoint_dir, out_dir)
 
@@ -314,6 +317,14 @@ def save_lora_checkpoint(fabric: L.Fabric, model: torch.nn.Module, file_path: Pa
     fabric.print(f"Saving LoRA weights to {str(file_path)!r}")
     fabric.save(file_path, {"model": model}, filter={"model": lora_filter})
 
+def choose_logger(logger_name: str, name: str, resume: Union[bool, Path], *args, **kwargs):
+    if logger_name == "csv":
+        return CSVLogger(root_dir="logs", name=name, *args, **kwargs)
+    if logger_name == "tensorboard":
+        return TensorBoardLogger(root_dir="logs", name=name, *args, **kwargs)
+    if logger_name == "wandb":
+        return WandbLogger(project="tinyllama", name=name, resume=(resume is not False), *args, **kwargs)
+    raise ValueError(f"`logger={logger_name}` is not a valid option.")
 
 if __name__ == "__main__":
     torch.set_float32_matmul_precision("high")
