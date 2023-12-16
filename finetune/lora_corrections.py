@@ -3,7 +3,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Dict, List, Literal, Optional, Tuple, Union
-from random import random
+import random
 
 import lightning as L
 import torch
